@@ -63,7 +63,7 @@ function installForUser(steamPath: string, installLocation: string, userId: stri
 	}
 
 	const currentLaunchArgs: string = game.LaunchOptions || "";
-	let userLaunchArgs = "";
+	let userLaunchArgs = currentLaunchArgs;
 	if (currentLaunchArgs.includes("%command%")) {
 		const parts = currentLaunchArgs.split("%command%");
 		userLaunchArgs = parts[1].trim();

@@ -50,7 +50,9 @@ function writeBlocklist(path: string, blocklist: BlockedUser[]) {
 async function run() {
 	// Start vtol before doing anything else
 	if (process.argv[2]) {
-		const child = spawn(process.argv[2], [], { stdio: ["ignore", "ignore", "ignore"], detached: true });
+		const args = process.argv.slice(3);
+		console.log(`Executing VTOL VR at ${process.argv[2]} with args ${args.join(", ")}`);
+		const child = spawn(process.argv[2], args, { stdio: ["ignore", "ignore", "ignore"], detached: true });
 		child.unref();
 	} else {
 		console.log(`No VTOL path provided?`);
