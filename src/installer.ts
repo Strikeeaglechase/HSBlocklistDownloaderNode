@@ -1,10 +1,11 @@
 import { execSync } from "child_process";
 import fs from "fs";
-import VDF from "vdf-parser";
+
+import * as VDF from "@node-steam/vdf";
 
 import { run } from "./downloader.js";
 
-const installToPath = process.argv[2] ?? "C:/BlocklistDownloader";
+const vtolId = "667970";
 
 const orgLog = console.log;
 console.log = (...args: any[]) => {
@@ -18,7 +19,7 @@ let execPathParts = process.argv[0].split("\\");
 let execName = execPathParts[execPathParts.length - 1].split(".")[0];
 if (execName == "node") {
 	execPathParts = process.argv[1].split("\\");
-	execPathParts[execPathParts.length - 1].split(".")[0];
+	execName = execPathParts[execPathParts.length - 1].split(".")[0];
 }
 
 
@@ -42,8 +43,9 @@ function killSteam() {
 	}
 }
 
-function installForUser(steamPath: string, userId: string) {
+function installForUser(steamPath: string, installLocation: string, userId: string) {
 	const configPath = `${steamPath}/userdata/${userId}/config/localconfig.vdf`;
+	console.log(`Installing for user ${userId} at ${configPath}`);
 	if (!fs.existsSync(configPath)) {
 		console.log(`Unable to locate config for user ${userId}`);
 		return;
@@ -54,7 +56,7 @@ function installForUser(steamPath: string, userId: string) {
 
 
 	// Get game
-	const game = parsed.UserLocalConfigStore?.Software?.valve?.Steam?.apps?.["667970"];
+	const game = parsed.UserLocalConfigStore?.Software?.valve?.Steam?.apps?.[vtolId];
 	if (!game) {
 		console.log(`Unable to locate game for user ${userId}`);
 		return;
@@ -68,18 +70,54 @@ function installForUser(steamPath: string, userId: string) {
 		console.log(`Found existing launch args: ${currentLaunchArgs}, trying to extract ${userLaunchArgs}`);
 	}
 
-	const newLaunchArgs = `${installToPath}/blocklist-downloader.exe %command% ${userLaunchArgs}`;
+	const exePath = `\\"` + `${installLocation}\\blocklist-downloader.exe`.replaceAll("\\", "\\\\") + `\\"`;
+	const newLaunchArgs = `${exePath} %command% ${userLaunchArgs}`;
 	console.log(`Setting new launch args: ${newLaunchArgs}`);
 	game.LaunchOptions = newLaunchArgs;
 
-	const newConfig = VDF.stringify(parsed, { pretty: true, indent: "\t" });
+	const newConfig = VDF.stringify(parsed);
 	fs.writeFileSync(configPath, newConfig);
 
 	console.log(`Successfully installed for user ${userId}`);
 }
 
+function uninstallForUser(steamPath: string, userId: string) {
+	const configPath = `${steamPath}/userdata/${userId}/config/localconfig.vdf`;
+	console.log(`Uninstalling for user ${userId} at ${configPath}`);
+	if (!fs.existsSync(configPath)) {
+		console.log(`Unable to locate config for user ${userId}`);
+		return;
+	}
+
+	const config = fs.readFileSync(configPath, "utf-8");
+	const parsed = VDF.parse(config) as any;
+
+	// Get game
+	const game = parsed.UserLocalConfigStore?.Software?.valve?.Steam?.apps?.[vtolId];
+	if (!game) {
+		console.log(`Unable to locate game for user ${userId}`);
+		return;
+	}
+
+	const currentLaunchArgs: string = game.LaunchOptions || "";
+	if (!currentLaunchArgs.includes("%command%")) {
+		console.log(`User ${userId} does not seem to have blocklist-downloader installed`);
+		return;
+	}
+	const parts = currentLaunchArgs.split("%command%");
+	const userLaunchArgs = parts[1].trim();
+
+	console.log(`Setting new launch args: ${userLaunchArgs}`);
+	game.LaunchOptions = userLaunchArgs;
+
+	const newConfig = VDF.stringify(parsed);
+	fs.writeFileSync(configPath, newConfig);
+
+	console.log(`Successfully uninstalled for user ${userId}`);
+}
+
 function locateSteam() {
-	const possiblePaths = ["C:/Program Files (x86)/Steam", "C:/Program Files/Steam", "C:/Steam"];
+	const possiblePaths = ["C:\\Program Files (x86)\\Steam", "C:\\Program Files\\Steam", "C:\\Steam"];
 	if (process.argv[3]) possiblePaths.unshift(process.argv[3]); // Allow passing in a custom path
 
 	for (const path of possiblePaths) {
@@ -90,16 +128,47 @@ function locateSteam() {
 	}
 }
 
-function createInstallLocation() {
-	console.log(`Creating install location at ${installToPath}`);
-	if (!fs.existsSync(installToPath)) {
-		console.log(`Creating folder at ${installToPath}`);
-		fs.mkdirSync(installToPath);
+function locateVtolPath(steamPath: string) {
+	const libraryFoldersPath = `${steamPath}\\steamapps\\libraryfolders.vdf`;
+	if (!fs.existsSync(libraryFoldersPath)) {
+		console.log(`Unable to locate libraryfolders.vdf at ${libraryFoldersPath}`);
+		return;
 	}
 
-	const exePath = `${installToPath}/blocklist-downloader.exe`;
+	const libraryFolders = VDF.parse(fs.readFileSync(libraryFoldersPath, "utf-8")) as any;
+	const folderKeys = Object.keys(libraryFolders.libraryfolders);
+	for (const key of folderKeys) {
+		const folder = libraryFolders.libraryfolders[key];
+		const install = folder.apps[vtolId];
+		console.log(`Checking if vtol is installed in ${folder.path} (${key}): ${install != undefined}`);
+
+		if (install) {
+			let vtolPath = `${folder.path}\\steamapps\\common\\VTOL VR`;
+			vtolPath = vtolPath.replaceAll("\\\\", "\\");
+			return vtolPath;
+		}
+	}
+
+	console.log(`Unable to locate VTOLs install directory`);
+}
+
+function createInstallLocation(vtolPath: string): string {
+	const installLocation = vtolPath + "\\blocklist-downloader";
+	console.log(`Creating install location at ${vtolPath}`);
+	if (!fs.existsSync(installLocation)) {
+		console.log(`Creating folder at ${installLocation}`);
+		fs.mkdirSync(installLocation);
+	}
+
+	const exePath = `${installLocation}/blocklist-downloader.exe`;
 	if (fs.existsSync(exePath)) fs.rmSync(exePath);
 	fs.copyFileSync(execPathParts.join("\\"), exePath);
+
+	// Make the uninstall batch file
+	const uninstallScript = `@echo off\nblocklist-downloader.exe uninstall\npause`;
+	fs.writeFileSync(`${installLocation}/uninstall.bat`, uninstallScript);
+
+	return installLocation;
 }
 
 async function install() {
@@ -110,12 +179,25 @@ async function install() {
 		process.exit(1);
 	}
 
+	const vtolPath = locateVtolPath(steamPath);
+	if (!steamPath) {
+		console.log("Unable to locate VTOLs install directory");
+		await keypress();
+		process.exit(1);
+	}
+	const installLocation = createInstallLocation(vtolPath);
+	console.log({ steamPath, vtolPath, installLocation });
 	const steamWasKilled = killSteam();
 
-	createInstallLocation();
-
 	const users = fs.readdirSync(`${steamPath}/userdata`);
-	users.forEach(user => installForUser(steamPath, user));
+	users.forEach(user => {
+		try {
+			installForUser(steamPath, installLocation, user);
+		} catch (e) {
+			console.log(`Installing for user ${user} failed: ${e}`);
+			console.log(`${e.stack}`);
+		}
+	});
 
 	if (steamWasKilled) {
 		console.log("Restarting steam");
@@ -123,6 +205,38 @@ async function install() {
 	}
 }
 
+async function uninstall() {
+	const steamPath = locateSteam();
+	if (!steamPath) {
+		console.log("Unable to locate steam");
+		await keypress();
+		process.exit(1);
+	}
+
+	const steamWasKilled = killSteam();
+
+	const users = fs.readdirSync(`${steamPath}/userdata`);
+	users.forEach(user => {
+		try {
+			uninstallForUser(steamPath, user);
+		} catch (e) {
+			console.log(`Uninstalling for user ${user} failed: ${e}`);
+			console.log(`${e.stack}`);
+		}
+	});
+
+	if (steamWasKilled) {
+		console.log("Restarting steam");
+		execSync("start steam://open/main");
+	}
+}
+
+const firstArg = process.argv[2]?.toLowerCase().trim();
+if (firstArg == "uninstall" || firstArg == "remove") {
+	console.log(`Running uninstaller`);
+	uninstall();
+	process.exit(0);
+}
 
 if (execName.toLowerCase().includes("installer")) {
 	console.log(`Running as installer`);

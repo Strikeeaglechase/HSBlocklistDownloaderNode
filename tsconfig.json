@@ -9,7 +9,7 @@
 		"allowSyntheticDefaultImports": true,
 		"outDir": "dist/",
 		"lib": [
-			"ES2019",
+			"ES2021",
 			"DOM"
 		]
 	},
