@@ -43,6 +43,25 @@ function killSteam() {
 	}
 }
 
+function extractGameFromVdf(vdf: object): any {
+	const keys = ["UserLocalConfigStore", "Software", "Valve", "Steam", "Apps", vtolId];
+	let current = vdf;
+	for (const key of keys) {
+		if (current[key]) current = current[key];
+		else {
+			// Try first letter lower
+			const lowerKey = key[0].toLowerCase() + key.slice(1);
+			if (current[lowerKey]) current = current[lowerKey];
+			else {
+				console.log(`Failed to locate VDF after key ${key}`);
+				return;
+			}
+		}
+	}
+
+	return current;
+}
+
 function installForUser(steamPath: string, installLocation: string, userId: string) {
 	const configPath = `${steamPath}/userdata/${userId}/config/localconfig.vdf`;
 	console.log(`Installing for user ${userId} at ${configPath}`);
@@ -56,7 +75,9 @@ function installForUser(steamPath: string, installLocation: string, userId: stri
 
 
 	// Get game
-	const game = parsed.UserLocalConfigStore?.Software?.valve?.Steam?.apps?.[vtolId];
+	// const game = parsed.UserLocalConfigStore?.Software?.valve?.Steam?.apps?.[vtolId];
+	const game = extractGameFromVdf(parsed);
+
 	if (!game) {
 		console.log(`Unable to locate game for user ${userId}`);
 		return;
@@ -93,7 +114,7 @@ function uninstallForUser(steamPath: string, userId: string) {
 	const parsed = VDF.parse(config) as any;
 
 	// Get game
-	const game = parsed.UserLocalConfigStore?.Software?.valve?.Steam?.apps?.[vtolId];
+	const game = extractGameFromVdf(parsed);
 	if (!game) {
 		console.log(`Unable to locate game for user ${userId}`);
 		return;
