@@ -1,7 +1,6 @@
-// import fs from "fs";
-// import path from "path";
-const fs = require('fs');
-const path = require('path');
+import { spawn } from "child_process";
+import fs from "fs";
+import path from "path";
 
 interface BlockedUser {
 	steamId: string;
@@ -49,6 +48,14 @@ function writeBlocklist(path: string, blocklist: BlockedUser[]) {
 }
 
 async function run() {
+	// Start vtol before doing anything else
+	if (process.argv[2]) {
+		const child = spawn(process.argv[2], [], { stdio: ["ignore", "ignore", "ignore"], detached: true });
+		child.unref();
+	} else {
+		console.log(`No VTOL path provided?`);
+	}
+
 	const hsBlockedUsersReq = await fetch("https://hs.vtolvr.live/api/v1/public/bannedusers");
 	const hsBannedUsers = await hsBlockedUsersReq.json();
 	const hsBlockedUsers: BlockedUser[] = hsBannedUsers.map((user: any) => {
@@ -77,6 +84,23 @@ async function run() {
 
 	console.log(`Got ${whitelist.length} users from whitelist file`);
 
+
+	const hsLocalBlockedUsers = path.join(process.env.APPDATA, "Boundless Dynamics, LLC\\VTOLVR\\SaveData\\hsblocked.json");
+	let currentUsersBlockedByHs: BlockedUser[] = [];
+	if (fs.existsSync(hsLocalBlockedUsers)) currentUsersBlockedByHs = JSON.parse(fs.readFileSync(hsLocalBlockedUsers, "utf-8"));
+
+	// Remove users that are no longer blocked
+	for (const user of currentUsersBlockedByHs) {
+		const userInHsBl = hsBlockedUsers.find(u => u.steamId == user.steamId);
+		if (!userInHsBl) {
+			console.log(`User ${user.pilotName} (${user.steamId}) has been unbanned on HS (good for them!), removing from blocklist`);
+			blFileBlockedUsers = blFileBlockedUsers.filter(u => u.steamId != user.steamId);
+		}
+	}
+
+	// Update local hs blocklist
+	fs.writeFileSync(hsLocalBlockedUsers, JSON.stringify(hsBlockedUsers));
+
 	const finalBlocklist = [...blFileBlockedUsers];
 	for (const user of hsBlockedUsers) {
 		if (whitelist.includes(user.steamId)) {
@@ -95,4 +119,4 @@ async function run() {
 	writeBlocklist(blPath, finalBlocklist);
 }
 
-run();
+export { run };

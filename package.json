@@ -4,9 +4,16 @@
 	"description": "",
 	"main": "dist/index.js",
 	"scripts": {
-		"build": "tsc && pkg dist/index.js -C GZip --targets node18-win-x64 -o blocklist-downloader.exe"
+		"build": "npm run compile && npm run package",
+		"compile": "tsc && rollup -o build/index.js --format cjs --input dist/installer.js",
+		"package": "pkg build/index.js -C GZip --targets node18-win-x64 -o blocklist-installer.exe",
+		"build-downloader": "pkg dist/downloader.js -C GZip --targets node18-win-x64 -o blocklist-downloader.exe",
+		"build-installer": "pkg dist/installer.js -C GZip --targets node18-win-x64 -o blocklist-installer.exe"
 	},
 	"author": "",
 	"license": "ISC",
-	"dependencies": {}
+	"type": "module",
+	"dependencies": {
+		"vdf-parser": "^1.2.1"
+	}
 }
