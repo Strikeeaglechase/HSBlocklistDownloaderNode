@@ -72,7 +72,7 @@ async function run() {
 	console.log(`Got ${hsBlockedUsers.length} users from HS API`);
 
 
-	const blPath = path.join(process.env.APPDATA, "Boundless Dynamics, LLC\\VTOLVR\\SaveData\\blocklist.cfg");
+	const blPath = path.join(process.env.APPDATA, "Boundless Dynamics, LLC\\VTOLVR\\SaveData\\blockedPlayers.cfg");
 	let blFileBlockedUsers: BlockedUser[] = [];
 	if (fs.existsSync(blPath)) blFileBlockedUsers = loadBlocklist(blPath);
 	else console.log(`No current blocklist at ${blPath}`);
